@@ -61,7 +61,6 @@ const INITIAL_TASKS = {
   't4': { id: 't4', title: 'Datenmigration', description: 'Altdaten aus SAP exportieren und bereinigen.', status: 'todo', dueDate: '2026-08-01', assignee: 'IT-Abteilung', parentId: 't1', subtaskIds: [], tags: [] },
   't5': { id: 't5', title: 'Interviews Vertrieb', description: 'Anforderungen des Vertriebs aufnehmen.', status: 'done', dueDate: '2026-01-20', assignee: 'Paul Weber', parentId: 't2', subtaskIds: [], tags: [] },
   't6': { id: 't6', title: 'Interviews Buchhaltung', description: 'Anforderungen der FiBu aufnehmen.', status: 'done', dueDate: '2026-01-25', assignee: 'Anna Schmidt', parentId: 't2', subtaskIds: [], tags: [] },
-  
   't7': { id: 't7', title: 'Sommerfest 2026 planen', description: 'Organisation des jährlichen Firmensommerfests.', status: 'todo', dueDate: '2026-07-15', assignee: 'Personalwesen (HR)', parentId: null, subtaskIds: ['t8'], tags: [{id: 'tag4', text: 'Event', colorClass: 'bg-purple-100 text-purple-700 border-purple-300'}] },
   't8': { id: 't8', title: 'Catering buchen', description: 'Budget: 50€ pro Person. Vegan und Fleisch.', status: 'todo', dueDate: '2026-05-01', assignee: 'Julia Wagner', parentId: 't7', subtaskIds: [], tags: [] },
 };
