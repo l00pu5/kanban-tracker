@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { 
-  Plus, X, Calendar, User, AlignLeft, 
-  CheckSquare, ChevronRight, Clock, 
+import {
+  Plus, X, Calendar, User, AlignLeft,
+  CheckSquare, ChevronRight, Clock,
   MoreVertical, Trash2, ListTree, Home, Tag,
-  LogOut, Lock, UserCircle, Users
+  LogOut, Lock, UserCircle, Users,
+  LayoutGrid, List as ListIcon, Search, Pencil
 } from 'lucide-react';
 
 // --- Constants & Initial Data ---
@@ -55,13 +56,14 @@ const TAG_COLORS = [
 
 // Normalized state for infinite nesting
 const INITIAL_TASKS = {
-  't1': { id: 't1', title: 'Neues ERP-System einführen', description: 'Ablösung des alten SAP-Systems durch ein modernes Cloud-ERP.', status: 'inProgress', dueDate: '2026-12-01', assignee: 'IT-Abteilung', parentId: null, subtaskIds: ['t2', 't3', 't4'], tags: [{id: 'tag1', text: 'Prio 1', colorClass: 'bg-red-100 text-red-700 border-red-300'}, {id: 'tag2', text: 'IT', colorClass: 'bg-blue-100 text-blue-700 border-blue-300'}] },
+  't1': { id: 't1', title: 'Neues ERP-System einführen', description: 'Ablösung des alten SAP-Systems durch ein modernes Cloud-ERP.', status: 'inProgress', dueDate: '2026-12-01', assignee: 'IT-Abteilung', parentId: null, subtaskIds: ['t2', 't3', 't4'], tags: [{ id: 'tag1', text: 'Prio 1', colorClass: 'bg-red-100 text-red-700 border-red-300' }, { id: 'tag2', text: 'IT', colorClass: 'bg-blue-100 text-blue-700 border-blue-300' }] },
   't2': { id: 't2', title: 'Bedarfsanalyse', description: 'Was brauchen die einzelnen Abteilungen?', status: 'done', dueDate: '2026-02-15', assignee: 'Max Mustermann', parentId: 't1', subtaskIds: ['t5', 't6'], tags: [] },
-  't3': { id: 't3', title: 'Anbieterauswahl', description: 'Pitch von 3 verschiedenen Anbietern.', status: 'inProgress', dueDate: '2026-04-30', assignee: 'Geschäftsführung', parentId: 't1', subtaskIds: [], tags: [{id: 'tag3', text: 'Wichtig', colorClass: 'bg-orange-100 text-orange-700 border-orange-300'}] },
+  't3': { id: 't3', title: 'Anbieterauswahl', description: 'Pitch von 3 verschiedenen Anbietern.', status: 'inProgress', dueDate: '2026-04-30', assignee: 'Geschäftsführung', parentId: 't1', subtaskIds: [], tags: [{ id: 'tag3', text: 'Wichtig', colorClass: 'bg-orange-100 text-orange-700 border-orange-300' }] },
   't4': { id: 't4', title: 'Datenmigration', description: 'Altdaten aus SAP exportieren und bereinigen.', status: 'todo', dueDate: '2026-08-01', assignee: 'IT-Abteilung', parentId: 't1', subtaskIds: [], tags: [] },
   't5': { id: 't5', title: 'Interviews Vertrieb', description: 'Anforderungen des Vertriebs aufnehmen.', status: 'done', dueDate: '2026-01-20', assignee: 'Paul Weber', parentId: 't2', subtaskIds: [], tags: [] },
   't6': { id: 't6', title: 'Interviews Buchhaltung', description: 'Anforderungen der FiBu aufnehmen.', status: 'done', dueDate: '2026-01-25', assignee: 'Anna Schmidt', parentId: 't2', subtaskIds: [], tags: [] },
-  't7': { id: 't7', title: 'Sommerfest 2026 planen', description: 'Organisation des jährlichen Firmensommerfests.', status: 'todo', dueDate: '2026-07-15', assignee: 'Personalwesen (HR)', parentId: null, subtaskIds: ['t8'], tags: [{id: 'tag4', text: 'Event', colorClass: 'bg-purple-100 text-purple-700 border-purple-300'}] },
+
+  't7': { id: 't7', title: 'Sommerfest 2026 planen', description: 'Organisation des jährlichen Firmensommerfests.', status: 'todo', dueDate: '2026-07-15', assignee: 'Personalwesen (HR)', parentId: null, subtaskIds: ['t8'], tags: [{ id: 'tag4', text: 'Event', colorClass: 'bg-purple-100 text-purple-700 border-purple-300' }] },
   't8': { id: 't8', title: 'Catering buchen', description: 'Budget: 50€ pro Person. Vegan und Fleisch.', status: 'todo', dueDate: '2026-05-01', assignee: 'Julia Wagner', parentId: 't7', subtaskIds: [], tags: [] },
 };
 
@@ -79,12 +81,13 @@ export default function KanbanTracker() {
   const [tasks, setTasks] = useState(INITIAL_TASKS);
   const [statuses, setStatuses] = useState(INITIAL_STATUSES);
   const [usersDb, setUsersDb] = useState(MOCK_USERS);
-  
+
   // Permissions & Admin Dashboard
   const isAdmin = currentUser?.role === 'admin';
   const canWrite = isAdmin || currentUser?.role === 'write';
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
+  const [editingUserId, setEditingUserId] = useState(null);
 
   // Extract unique departments from users
   const uniqueDepartments = useMemo(() => {
@@ -99,7 +102,7 @@ export default function KanbanTracker() {
     Object.values(tasks).forEach(task => {
       if (task.assignee === currentUser.name || task.assignee === currentUser.department) {
         visible.add(task.id);
-        
+
         // Füge alle Unteraufgaben hinzu (da der Nutzer die Hauptaufgabe besitzt)
         const addDescendants = (tId) => {
           const t = tasks[tId];
@@ -123,9 +126,18 @@ export default function KanbanTracker() {
     return visible;
   }, [tasks, currentUser]);
 
+  // Root Tasks Calculation - moved up to avoid ReferenceError
+  const rootTasks = useMemo(() => {
+    return Object.values(tasks).filter(t => t.parentId === null && (!visibleTaskIds || visibleTaskIds.has(t.id)));
+  }, [tasks, visibleTaskIds]);
+
   // Modal State
   const [activePath, setActivePath] = useState([]);
-  
+
+  // View & Search State
+  const [viewMode, setViewMode] = useState('board');
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Tag creation state
   const [newTagText, setNewTagText] = useState('');
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
@@ -206,7 +218,7 @@ export default function KanbanTracker() {
 
     setTasks(prev => {
       const updated = { ...prev };
-      
+
       const getDescendants = (taskId) => {
         let desc = [taskId];
         if (updated[taskId] && updated[taskId].subtaskIds) {
@@ -244,11 +256,11 @@ export default function KanbanTracker() {
   const handleAddStatus = () => {
     const newId = generateId();
     const randomStyle = STATUS_PALETTE[Math.floor(Math.random() * STATUS_PALETTE.length)];
-    setStatuses([...statuses, { 
-      id: newId, 
-      label: 'Neue Spalte', 
-      color: randomStyle.color, 
-      border: randomStyle.border 
+    setStatuses([...statuses, {
+      id: newId,
+      label: 'Neue Spalte',
+      color: randomStyle.color,
+      border: randomStyle.border
     }]);
   };
 
@@ -269,7 +281,7 @@ export default function KanbanTracker() {
     const hasTasks = Object.values(tasks).some(t => t.status === id);
     if (hasTasks) {
       if (!window.confirm("Diese Spalte enthält noch Aufgaben. Spalte trotzdem löschen? Die Aufgaben werden in die erste Spalte verschoben.")) return;
-      
+
       const firstAvailableStatus = statuses.find(s => s.id !== id).id;
       setTasks(prev => {
         const updated = { ...prev };
@@ -291,7 +303,7 @@ export default function KanbanTracker() {
   const handleDragEnd = () => setActiveDragCol(null);
 
   const handleDragOver = (e, statusId) => {
-    e.preventDefault(); 
+    e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (activeDragCol !== statusId) setActiveDragCol(statusId);
   };
@@ -342,7 +354,7 @@ export default function KanbanTracker() {
   const getSubtaskStats = (taskId) => {
     const task = tasks[taskId];
     if (!task || task.subtaskIds.length === 0) return null;
-    
+
     let total = 0;
     let done = 0;
 
@@ -361,6 +373,92 @@ export default function KanbanTracker() {
     return { total, done };
   };
 
+  // -- List View Helpers --
+  const listVisibleTaskIds = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+
+    const lowerQuery = searchQuery.toLowerCase();
+    const matches = new Set();
+
+    const checkTask = (taskId) => {
+      const task = tasks[taskId];
+      if (!task) return false;
+      if (visibleTaskIds && !visibleTaskIds.has(taskId)) return false;
+
+      let isMatch = (task.title || '').toLowerCase().includes(lowerQuery) ||
+        (task.description || '').toLowerCase().includes(lowerQuery);
+
+      // Check children recursively
+      task.subtaskIds.forEach(childId => {
+        if (checkTask(childId)) {
+          isMatch = true;
+        }
+      });
+
+      if (isMatch) matches.add(taskId);
+      return isMatch;
+    };
+
+    rootTasks.forEach(t => checkTask(t.id));
+    return matches;
+  }, [tasks, searchQuery, visibleTaskIds, rootTasks]);
+
+  const renderTaskRow = (taskId, level = 0) => {
+    const task = tasks[taskId];
+    if (!task) return null;
+
+    if (visibleTaskIds && !visibleTaskIds.has(taskId)) return null;
+    if (searchQuery.trim() && listVisibleTaskIds && !listVisibleTaskIds.has(taskId)) return null;
+
+    const statusObj = statuses.find(s => s.id === task.status) || statuses[0];
+
+    return (
+      <React.Fragment key={taskId}>
+        <div
+          onClick={() => openTask(taskId)}
+          className="flex items-center gap-4 p-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group"
+        >
+          <div className="flex-1 min-w-0 flex items-center gap-2" style={{ paddingLeft: `${level * 1.5}rem` }}>
+            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusObj?.color.split(' ')[0]}`} />
+            <span className={`font-medium text-slate-900 truncate group-hover:text-blue-600 transition-colors ${task.status === 'done' ? 'line-through text-slate-400' : ''}`}>
+              {task.title || 'Benennungslose Aufgabe'}
+            </span>
+            {task.subtaskIds.length > 0 && (
+              <span className="bg-slate-100 text-slate-500 text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ml-2">
+                {task.subtaskIds.filter(id => !visibleTaskIds || visibleTaskIds.has(id)).length} Unteraufg.
+              </span>
+            )}
+          </div>
+
+          <div className="w-32 hidden sm:flex items-center">
+            <span className={`text-[10px] px-2 py-1 rounded font-medium border ${statusObj?.color} ${statusObj?.border} truncate`}>
+              {statusObj?.label}
+            </span>
+          </div>
+
+          <div className="w-40 hidden md:flex items-center gap-1.5 text-xs text-slate-600 truncate">
+            {task.assignee && (
+              <>
+                <UserCircle size={14} className="text-slate-400 flex-shrink-0" />
+                <span className="truncate">{task.assignee}</span>
+              </>
+            )}
+          </div>
+
+          <div className={`w-24 hidden sm:flex items-center gap-1.5 text-xs ${task.dueDate && new Date(task.dueDate).setHours(23, 59, 59, 999) < new Date() && task.status !== 'done' ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+            {task.dueDate ? (
+              <>
+                <Calendar size={13} className="flex-shrink-0" />
+                <span>{new Date(task.dueDate).toLocaleDateString('de-DE')}</span>
+              </>
+            ) : '-'}
+          </div>
+        </div>
+        {task.subtaskIds.map(childId => renderTaskRow(childId, level + 1))}
+      </React.Fragment>
+    );
+  };
+
   // -- Render Login Screen --
   if (!currentUser) {
     return (
@@ -373,32 +471,32 @@ export default function KanbanTracker() {
             <h1 className="text-2xl font-bold text-slate-900">NestiTask Login</h1>
             <p className="text-slate-500 text-sm mt-1 text-center">Bitte melde dich an, um auf deine Aufgaben zuzugreifen.</p>
           </div>
-          
+
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Benutzername</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 autoFocus
                 value={loginForm.username}
-                onChange={e => setLoginForm({...loginForm, username: e.target.value})}
+                onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
                 className="w-full p-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                 placeholder="z.B. admin"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Passwort</label>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 value={loginForm.password}
-                onChange={e => setLoginForm({...loginForm, password: e.target.value})}
+                onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
                 className="w-full p-3 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                 placeholder="••••••"
               />
             </div>
-            
+
             {loginError && <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{loginError}</p>}
-            
+
             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors shadow-sm">
               Anmelden
             </button>
@@ -413,9 +511,6 @@ export default function KanbanTracker() {
     );
   }
 
-  // -- Render Main App --
-  const rootTasks = Object.values(tasks).filter(t => t.parentId === null && (!visibleTaskIds || visibleTaskIds.has(t.id)));
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
       {/* Header */}
@@ -427,10 +522,28 @@ export default function KanbanTracker() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 hidden sm:block">Abteilungsübergreifende Aufgabenverwaltung</p>
         </div>
-        
+
         <div className="flex items-center gap-4 sm:gap-6">
+          {/* View Toggle */}
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setViewMode('board')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'board' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              title="Board-Ansicht"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              title="Listenansicht"
+            >
+              <ListIcon size={16} />
+            </button>
+          </div>
+
           {isAdmin && (
-            <button 
+            <button
               onClick={() => setShowAdminDashboard(true)}
               className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 sm:px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow-sm text-sm sm:text-base"
             >
@@ -440,7 +553,7 @@ export default function KanbanTracker() {
           )}
 
           {canWrite && (
-            <button 
+            <button
               onClick={() => handleCreateTask(null)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow-sm text-sm sm:text-base"
             >
@@ -448,7 +561,7 @@ export default function KanbanTracker() {
               <span className="hidden sm:inline">Hauptaufgabe erstellen</span>
             </button>
           )}
-          
+
           <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
 
           <div className="flex items-center gap-3">
@@ -459,7 +572,7 @@ export default function KanbanTracker() {
             <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
               {currentUser.name.charAt(0)}
             </div>
-            <button 
+            <button
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors ml-1"
               title="Abmelden"
@@ -470,151 +583,192 @@ export default function KanbanTracker() {
         </div>
       </header>
 
-      {/* Kanban Board */}
-      <main className="flex-1 overflow-x-auto p-6">
-        <div className="flex gap-6 min-w-max h-full items-start">
-          {statuses.map(statusDef => (
-            <div 
-              key={statusDef.id} 
-              className={`w-80 rounded-xl flex flex-col h-full border shrink-0 transition-all ${
-                activeDragCol === statusDef.id 
-                  ? 'bg-blue-50/80 border-blue-400 border-dashed shadow-inner' 
-                  : 'bg-slate-100/50 border-slate-200'
-              }`}
-              onDragOver={(e) => canWrite && handleDragOver(e, statusDef.id)}
-              onDrop={(e) => canWrite && handleDrop(e, statusDef.id)}
-            >
-              <div className="p-4 flex items-center justify-between border-b border-slate-200/60 group">
-                <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
-                  <div className="relative flex items-center">
-                    <button 
-                      onClick={() => canWrite && setActiveColorPicker(activeColorPicker === statusDef.id ? null : statusDef.id)}
-                      className={`w-3 h-3 rounded-full flex-shrink-0 ${canWrite ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400' : ''} transition-all ${statusDef.color.split(' ')[0]}`}
-                      title={canWrite ? "Farbe ändern" : ""}
+      {/* Main Content */}
+      {viewMode === 'board' ? (
+        <main className="flex-1 overflow-x-auto p-6">
+          <div className="flex gap-6 min-w-max h-full items-start">
+            {statuses.map(statusDef => (
+              <div
+                key={statusDef.id}
+                className={`w-80 rounded-xl flex flex-col h-full border shrink-0 transition-all ${activeDragCol === statusDef.id
+                    ? 'bg-blue-50/80 border-blue-400 border-dashed shadow-inner'
+                    : 'bg-slate-100/50 border-slate-200'
+                  }`}
+                onDragOver={(e) => canWrite && handleDragOver(e, statusDef.id)}
+                onDrop={(e) => canWrite && handleDrop(e, statusDef.id)}
+              >
+                <div className="p-4 flex items-center justify-between border-b border-slate-200/60 group">
+                  <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
+                    <div className="relative flex items-center">
+                      <button
+                        onClick={() => canWrite && setActiveColorPicker(activeColorPicker === statusDef.id ? null : statusDef.id)}
+                        className={`w-3 h-3 rounded-full flex-shrink-0 ${canWrite ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400' : ''} transition-all ${statusDef.color.split(' ')[0]}`}
+                        title={canWrite ? "Farbe ändern" : ""}
+                      />
+                      {activeColorPicker === statusDef.id && canWrite && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setActiveColorPicker(null)} />
+                          <div className="absolute top-5 left-0 bg-white border border-slate-200 shadow-xl rounded-lg p-2 flex flex-wrap gap-1.5 w-32 z-20">
+                            {ALL_STATUS_COLORS.map((c, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => handleUpdateStatusColor(statusDef.id, c)}
+                                className={`w-4 h-4 rounded-full ${c.color.split(' ')[0]} ${statusDef.color === c.color ? 'ring-2 ring-offset-1 ring-slate-500' : 'hover:opacity-75'}`}
+                                title="Farbe wählen"
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={statusDef.label}
+                      onChange={(e) => handleUpdateStatus(statusDef.id, e.target.value)}
+                      readOnly={!canWrite}
+                      className={`font-semibold text-slate-700 bg-transparent border-b border-transparent ${canWrite ? 'focus:border-slate-300 outline-none' : 'outline-none cursor-default'} w-full truncate transition-colors`}
                     />
-                    {activeColorPicker === statusDef.id && canWrite && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setActiveColorPicker(null)} />
-                        <div className="absolute top-5 left-0 bg-white border border-slate-200 shadow-xl rounded-lg p-2 flex flex-wrap gap-1.5 w-32 z-20">
-                          {ALL_STATUS_COLORS.map((c, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => handleUpdateStatusColor(statusDef.id, c)}
-                              className={`w-4 h-4 rounded-full ${c.color.split(' ')[0]} ${statusDef.color === c.color ? 'ring-2 ring-offset-1 ring-slate-500' : 'hover:opacity-75'}`}
-                              title="Farbe wählen"
-                            />
-                          ))}
-                        </div>
-                      </>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
+                      {rootTasks.filter(t => t.status === statusDef.id).length}
+                    </span>
+                    {canWrite && (
+                      <button
+                        onClick={() => handleDeleteStatus(statusDef.id)}
+                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1"
+                        title="Spalte löschen"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     )}
                   </div>
-                  <input 
-                    type="text"
-                    value={statusDef.label}
-                    onChange={(e) => handleUpdateStatus(statusDef.id, e.target.value)}
-                    readOnly={!canWrite}
-                    className={`font-semibold text-slate-700 bg-transparent border-b border-transparent ${canWrite ? 'focus:border-slate-300 outline-none' : 'outline-none cursor-default'} w-full truncate transition-colors`}
-                  />
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
-                    {rootTasks.filter(t => t.status === statusDef.id).length}
-                  </span>
-                  {canWrite && (
-                    <button 
-                      onClick={() => handleDeleteStatus(statusDef.id)}
-                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1"
-                      title="Spalte löschen"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+
+                <div className="p-3 flex flex-col gap-3 overflow-y-auto">
+                  {rootTasks.filter(t => t.status === statusDef.id).map(task => {
+                    const stats = getSubtaskStats(task.id);
+                    return (
+                      <div
+                        key={task.id}
+                        draggable={canWrite}
+                        onDragStart={(e) => canWrite && handleDragStart(e, task.id)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => openTask(task.id)}
+                        className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-300 transition-all ${canWrite ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} group`}
+                      >
+                        <h3 className="font-medium text-slate-900 mb-2 leading-tight group-hover:text-blue-700 transition-colors">
+                          {task.title || 'Benennungslose Aufgabe'}
+                        </h3>
+
+                        {task.tags && task.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
+                            {task.tags.map(tag => (
+                              <span key={tag.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${tag.colorClass}`}>
+                                {tag.text}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-2 mt-3">
+                          {task.assignee && (
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                              <UserCircle size={14} className="text-slate-400" />
+                              <span className="truncate bg-slate-100 px-2 py-0.5 rounded-md">{task.assignee}</span>
+                            </div>
+                          )}
+                          {task.dueDate && (
+                            <div className={`flex items-center gap-1.5 text-xs w-fit ${new Date(task.dueDate).setHours(23, 59, 59, 999) < new Date() && task.status !== 'done' ? 'bg-red-100 text-red-700 px-2 py-0.5 rounded-md font-semibold shadow-sm' : 'text-slate-500'}`}>
+                              <Calendar size={14} />
+                              <span>{new Date(task.dueDate).toLocaleDateString('de-DE')}</span>
+                            </div>
+                          )}
+
+                          {stats && stats.total > 0 && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                                <span className="flex items-center gap-1"><CheckSquare size={12} /> Unteraufgaben</span>
+                                <span>{stats.done}/{stats.total}</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full ${stats.done === stats.total ? 'bg-green-500' : 'bg-blue-500'}`}
+                                  style={{ width: `${(stats.done / stats.total) * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {rootTasks.filter(t => t.status === statusDef.id).length === 0 && (
+                    <div className="text-center p-4 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
+                      Keine Aufgaben
+                    </div>
                   )}
                 </div>
               </div>
-              
-              <div className="p-3 flex flex-col gap-3 overflow-y-auto">
-                {rootTasks.filter(t => t.status === statusDef.id).map(task => {
-                  const stats = getSubtaskStats(task.id);
-                  return (
-                    <div 
-                      key={task.id} 
-                      draggable={canWrite}
-                      onDragStart={(e) => canWrite && handleDragStart(e, task.id)}
-                      onDragEnd={handleDragEnd}
-                      onClick={() => openTask(task.id)}
-                      className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-blue-300 transition-all ${canWrite ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} group`}
-                    >
-                      <h3 className="font-medium text-slate-900 mb-2 leading-tight group-hover:text-blue-700 transition-colors">
-                        {task.title || 'Benennungslose Aufgabe'}
-                      </h3>
-                      
-                      {task.tags && task.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-2 mt-1">
-                          {task.tags.map(tag => (
-                            <span key={tag.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${tag.colorClass}`}>
-                              {tag.text}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      
-                      <div className="flex flex-col gap-2 mt-3">
-                        {task.assignee && (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                            <UserCircle size={14} className="text-slate-400" />
-                            <span className="truncate bg-slate-100 px-2 py-0.5 rounded-md">{task.assignee}</span>
-                          </div>
-                        )}
-                        {task.dueDate && (
-                          <div className={`flex items-center gap-1.5 text-xs w-fit ${new Date(task.dueDate).setHours(23, 59, 59, 999) < new Date() && task.status !== 'done' ? 'bg-red-100 text-red-700 px-2 py-0.5 rounded-md font-semibold shadow-sm' : 'text-slate-500'}`}>
-                            <Calendar size={14} />
-                            <span>{new Date(task.dueDate).toLocaleDateString('de-DE')}</span>
-                          </div>
-                        )}
-                        
-                        {stats && stats.total > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-100">
-                            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                              <span className="flex items-center gap-1"><CheckSquare size={12}/> Unteraufgaben</span>
-                              <span>{stats.done}/{stats.total}</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5">
-                              <div 
-                                className={`h-1.5 rounded-full ${stats.done === stats.total ? 'bg-green-500' : 'bg-blue-500'}`} 
-                                style={{ width: `${(stats.done / stats.total) * 100}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
+            ))}
+
+            {canWrite && (
+              <button
+                onClick={handleAddStatus}
+                className="w-80 h-14 shrink-0 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center gap-2 text-slate-500 hover:text-slate-700 hover:border-slate-400 hover:bg-slate-100/50 transition-all font-medium"
+              >
+                <Plus size={18} /> Neue Spalte
+              </button>
+            )}
+          </div>
+        </main>
+      ) : (
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 flex flex-col items-center">
+          <div className="w-full max-w-5xl flex flex-col h-full">
+            {/* Search Bar */}
+            <div className="mb-4 relative flex-shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Aufgaben durchsuchen (Titel oder Beschreibung)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+              />
+            </div>
+
+            {/* List Container */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
+              <div className="flex items-center gap-4 p-4 border-b border-slate-200 bg-slate-100/50 text-xs font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">
+                <div className="flex-1">Aufgabe</div>
+                <div className="w-32 hidden sm:block">Status</div>
+                <div className="w-40 hidden md:block">Verantwortlich</div>
+                <div className="w-24 hidden sm:block">Fällig am</div>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {(() => {
+                  const filteredRootTasks = rootTasks.filter(t => !searchQuery.trim() || (listVisibleTaskIds && listVisibleTaskIds.has(t.id)));
+                  if (filteredRootTasks.length === 0) {
+                    return (
+                      <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
+                        <Search size={48} className="text-slate-200 mb-4" />
+                        <p>Keine Aufgaben gefunden, die deiner Suche entsprechen.</p>
                       </div>
-                    </div>
-                  );
-                })}
-                {rootTasks.filter(t => t.status === statusDef.id).length === 0 && (
-                  <div className="text-center p-4 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
-                    Keine Aufgaben
-                  </div>
-                )}
+                    );
+                  }
+                  return filteredRootTasks.map(t => renderTaskRow(t.id, 0));
+                })()}
               </div>
             </div>
-          ))}
-
-          {canWrite && (
-            <button 
-              onClick={handleAddStatus}
-              className="w-80 h-14 shrink-0 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center gap-2 text-slate-500 hover:text-slate-700 hover:border-slate-400 hover:bg-slate-100/50 transition-all font-medium"
-            >
-              <Plus size={18} /> Neue Spalte
-            </button>
-          )}
-        </div>
-      </main>
+          </div>
+        </main>
+      )}
 
       {/* Task Detail Modal */}
       {currentTask && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 md:p-12 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-full overflow-hidden border border-slate-200">
-            
+
             {/* Modal Header & Breadcrumbs */}
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between sticky top-0 z-10">
               <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -627,7 +781,7 @@ export default function KanbanTracker() {
                   return (
                     <React.Fragment key={taskId}>
                       <ChevronRight size={14} className="text-slate-300" />
-                      <button 
+                      <button
                         onClick={() => popToTask(idx)}
                         className={`truncate max-w-[150px] hover:text-slate-900 transition-colors ${idx === activePath.length - 1 ? 'font-semibold text-slate-900' : ''}`}
                       >
@@ -644,7 +798,7 @@ export default function KanbanTracker() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto flex-1 flex flex-col md:flex-row gap-8">
-              
+
               {/* Left Column: Main Info */}
               <div className="flex-1 space-y-6">
                 <div>
@@ -664,7 +818,7 @@ export default function KanbanTracker() {
                       <AlignLeft size={16} className="text-slate-400" /> Beschreibung
                     </label>
                     {canWrite && (
-                      <button 
+                      <button
                         onClick={() => setIsEditingDesc(!isEditingDesc)}
                         className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-medium transition-colors"
                       >
@@ -672,7 +826,7 @@ export default function KanbanTracker() {
                       </button>
                     )}
                   </div>
-                  
+
                   {isEditingDesc ? (
                     <textarea
                       value={currentTask.description}
@@ -682,8 +836,8 @@ export default function KanbanTracker() {
                       className="w-full min-h-[120px] p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-y text-sm font-mono"
                     />
                   ) : (
-                    <div 
-                      onClick={() => { if(canWrite && !currentTask.description) setIsEditingDesc(true); }}
+                    <div
+                      onClick={() => { if (canWrite && !currentTask.description) setIsEditingDesc(true); }}
                       className={`w-full min-h-[120px] p-4 rounded-xl border bg-slate-50 transition-all ${!currentTask.description && canWrite ? 'border-dashed border-slate-300 cursor-pointer hover:bg-slate-100 text-slate-400 italic flex items-center justify-center' : 'border-slate-200'} text-sm text-slate-800 overflow-hidden`}
                     >
                       {currentTask.description ? (
@@ -704,7 +858,7 @@ export default function KanbanTracker() {
                       <ListTree size={16} className="text-slate-400" /> Unteraufgaben
                     </label>
                     {canWrite && (
-                      <button 
+                      <button
                         onClick={() => handleCreateTask(currentTask.id)}
                         className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-1 font-medium transition-colors"
                       >
@@ -716,7 +870,7 @@ export default function KanbanTracker() {
                   <div className="space-y-2">
                     {(() => {
                       const visibleSubtaskIds = currentTask.subtaskIds.filter(id => !visibleTaskIds || visibleTaskIds.has(id));
-                      
+
                       if (visibleSubtaskIds.length === 0) {
                         return (
                           <div className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
@@ -730,10 +884,10 @@ export default function KanbanTracker() {
                         if (!subTask) return null;
                         const statusObj = statuses.find(s => s.id === subTask.status) || statuses[0];
                         const statusColor = statusObj?.color || 'bg-slate-100';
-                        
+
                         return (
-                          <div 
-                            key={subId} 
+                          <div
+                            key={subId}
                             onClick={() => pushTask(subId)}
                             className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-sm cursor-pointer group bg-white transition-all"
                           >
@@ -742,7 +896,7 @@ export default function KanbanTracker() {
                               <span className={`text-sm truncate font-medium ${subTask.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                                 {subTask.title || 'Unbenannt'}
                               </span>
-                              
+
                               {subTask.tags && subTask.tags.length > 0 && (
                                 <div className="hidden sm:flex gap-1 ml-1 flex-shrink-0">
                                   {subTask.tags.slice(0, 2).map(tag => (
@@ -784,7 +938,7 @@ export default function KanbanTracker() {
 
               {/* Right Column: Meta Attributes */}
               <div className="w-full md:w-72 flex-shrink-0 space-y-6 bg-slate-50 p-5 rounded-xl border border-slate-100 h-fit">
-                
+
                 {/* Status */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
@@ -846,14 +1000,14 @@ export default function KanbanTracker() {
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     <Tag size={14} /> Tags
                   </label>
-                  
+
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {currentTask.tags && currentTask.tags.map(tag => (
                       <span key={tag.id} className={`flex items-center gap-1 text-xs px-2 py-1 rounded border ${tag.colorClass}`}>
                         {tag.text}
                         {canWrite && (
-                          <button 
-                            onClick={() => handleRemoveTag(currentTask.id, tag.id)} 
+                          <button
+                            onClick={() => handleRemoveTag(currentTask.id, tag.id)}
                             className="hover:text-black opacity-50 hover:opacity-100 transition-opacity"
                           >
                             <X size={12} />
@@ -862,7 +1016,7 @@ export default function KanbanTracker() {
                       </span>
                     ))}
                     {(!currentTask.tags || currentTask.tags.length === 0) && (
-                       <span className="text-xs text-slate-400 italic">Keine Tags</span>
+                      <span className="text-xs text-slate-400 italic">Keine Tags</span>
                     )}
                   </div>
 
@@ -877,7 +1031,7 @@ export default function KanbanTracker() {
                           placeholder="Neuer Tag..."
                           className="flex-1 min-w-0 text-xs p-1.5 border-b border-slate-200 focus:border-blue-400 outline-none bg-transparent"
                         />
-                        <button 
+                        <button
                           onClick={() => handleAddTag(currentTask.id)}
                           className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-medium transition-colors"
                         >
@@ -902,7 +1056,7 @@ export default function KanbanTracker() {
                 {/* Actions */}
                 {canWrite && (
                   <div className="pt-6 border-t border-slate-200">
-                    <button 
+                    <button
                       onClick={() => handleDeleteTask(currentTask.id)}
                       className="w-full flex items-center justify-center gap-2 text-red-600 bg-red-50 hover:bg-red-100 p-2.5 rounded-lg text-sm font-medium transition-colors"
                     >
@@ -930,53 +1084,62 @@ export default function KanbanTracker() {
                 <Users className="text-blue-600" />
                 Nutzer- und Rechteverwaltung
               </h2>
-              <button onClick={() => setShowAdminDashboard(false)} className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-200 rounded-full transition-colors">
+              <button
+                onClick={() => {
+                  setShowAdminDashboard(false);
+                  setEditingUserId(null);
+                  setNewUserForm({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
+                }}
+                className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-200 rounded-full transition-colors"
+              >
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
               <div className="grid md:grid-cols-3 gap-6">
-                
+
                 {/* Create User Form */}
                 <div className="md:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit sticky top-0">
-                  <h3 className="font-semibold text-slate-800 mb-4 border-b pb-2">Neuen Nutzer anlegen</h3>
+                  <h3 className="font-semibold text-slate-800 mb-4 border-b pb-2">
+                    {editingUserId ? 'Nutzer bearbeiten' : 'Neuen Nutzer anlegen'}
+                  </h3>
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs font-medium text-slate-600">Benutzername (Login)</label>
-                      <input 
-                        type="text" 
-                        value={newUserForm.username} 
-                        onChange={e => setNewUserForm({...newUserForm, username: e.target.value})}
-                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none" 
+                      <input
+                        type="text"
+                        value={newUserForm.username}
+                        onChange={e => setNewUserForm({ ...newUserForm, username: e.target.value })}
+                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-600">Passwort</label>
-                      <input 
-                        type="text" 
-                        value={newUserForm.password} 
-                        onChange={e => setNewUserForm({...newUserForm, password: e.target.value})}
-                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none" 
+                      <input
+                        type="text"
+                        value={newUserForm.password}
+                        onChange={e => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-600">Anzeigename</label>
-                      <input 
-                        type="text" 
-                        value={newUserForm.name} 
-                        onChange={e => setNewUserForm({...newUserForm, name: e.target.value})}
-                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none" 
+                      <input
+                        type="text"
+                        value={newUserForm.name}
+                        onChange={e => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-600">Abteilung</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         list="dashboard-departments"
-                        value={newUserForm.department} 
-                        onChange={e => setNewUserForm({...newUserForm, department: e.target.value})}
-                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none" 
+                        value={newUserForm.department}
+                        onChange={e => setNewUserForm({ ...newUserForm, department: e.target.value })}
+                        className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none"
                       />
                       <datalist id="dashboard-departments">
                         {uniqueDepartments.map(dep => <option key={dep} value={dep} />)}
@@ -984,9 +1147,9 @@ export default function KanbanTracker() {
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-600">Berechtigung</label>
-                      <select 
-                        value={newUserForm.role} 
-                        onChange={e => setNewUserForm({...newUserForm, role: e.target.value})}
+                      <select
+                        value={newUserForm.role}
+                        onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })}
                         className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none bg-white"
                       >
                         <option value="read">Lesezugriff</option>
@@ -996,32 +1159,55 @@ export default function KanbanTracker() {
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-600">Sichtbarkeit</label>
-                      <select 
-                        value={newUserForm.viewAllTasks ? 'all' : 'restricted'} 
-                        onChange={e => setNewUserForm({...newUserForm, viewAllTasks: e.target.value === 'all'})}
+                      <select
+                        value={newUserForm.viewAllTasks ? 'all' : 'restricted'}
+                        onChange={e => setNewUserForm({ ...newUserForm, viewAllTasks: e.target.value === 'all' })}
                         className="w-full p-2 mt-1 rounded text-sm border focus:ring-2 focus:ring-blue-100 outline-none bg-white"
                       >
                         <option value="all">Alle Aufgaben sehen</option>
                         <option value="restricted">Nur eigene & Abteilung</option>
                       </select>
                     </div>
-                    <button 
-                      onClick={() => {
-                        if(!newUserForm.username || !newUserForm.name) return;
-                        setUsersDb([...usersDb, { id: 'u'+Date.now(), ...newUserForm }]);
-                        setNewUserForm({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
-                      }}
-                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-sm font-medium transition-colors"
-                    >
-                      Nutzer hinzufügen
-                    </button>
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => {
+                          if (!newUserForm.username || !newUserForm.name) return;
+
+                          if (editingUserId) {
+                            if (editingUserId === currentUser.id && newUserForm.role !== 'admin' && currentUser.role === 'admin') {
+                              if (!window.confirm("Achtung: Du entziehst dir selbst die Admin-Rechte! Fortfahren?")) return;
+                            }
+                            setUsersDb(usersDb.map(u => u.id === editingUserId ? { ...newUserForm, id: editingUserId } : u));
+                            setEditingUserId(null);
+                          } else {
+                            setUsersDb([...usersDb, { id: 'u' + Date.now(), ...newUserForm }]);
+                          }
+                          setNewUserForm({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
+                        }}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded text-sm font-medium transition-colors"
+                      >
+                        {editingUserId ? 'Speichern' : 'Nutzer hinzufügen'}
+                      </button>
+
+                      {editingUserId && (
+                        <button
+                          onClick={() => {
+                            setEditingUserId(null);
+                            setNewUserForm({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
+                          }}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded text-sm font-medium transition-colors"
+                        >
+                          Abbrechen
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* User List */}
                 <div className="md:col-span-2 space-y-3">
                   {usersDb.map(u => (
-                    <div key={u.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between">
+                    <div key={u.id} className={`p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between transition-all ${editingUserId === u.id ? 'bg-blue-50/50 border-blue-300' : 'bg-white border-slate-200'}`}>
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold flex-shrink-0">
                           {u.name.charAt(0)}
@@ -1031,41 +1217,57 @@ export default function KanbanTracker() {
                           <p className="text-xs text-slate-500 truncate">{u.department}</p>
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 justify-end">
                         <select
                           value={u.viewAllTasks !== false ? 'all' : 'restricted'}
-                          onChange={(e) => setUsersDb(usersDb.map(user => user.id === u.id ? {...user, viewAllTasks: e.target.value === 'all'} : user))}
-                          className="text-xs p-1.5 rounded border outline-none bg-slate-50 border-slate-200 text-slate-600"
+                          disabled={editingUserId === u.id}
+                          onChange={(e) => setUsersDb(usersDb.map(user => user.id === u.id ? { ...user, viewAllTasks: e.target.value === 'all' } : user))}
+                          className="text-xs p-1.5 rounded border outline-none bg-slate-50 border-slate-200 text-slate-600 disabled:opacity-50"
                         >
                           <option value="all">Alle Aufgaben</option>
                           <option value="restricted">Nur eigene</option>
                         </select>
-                        
+
                         <select
                           value={u.role}
+                          disabled={editingUserId === u.id}
                           onChange={(e) => {
-                            if(u.id === currentUser.id && e.target.value !== 'admin') {
-                              if(!window.confirm("Achtung: Du entziehst dir selbst die Admin-Rechte! Fortfahren?")) return;
+                            if (u.id === currentUser.id && e.target.value !== 'admin') {
+                              if (!window.confirm("Achtung: Du entziehst dir selbst die Admin-Rechte! Fortfahren?")) return;
                             }
-                            setUsersDb(usersDb.map(user => user.id === u.id ? {...user, role: e.target.value} : user))
+                            setUsersDb(usersDb.map(user => user.id === u.id ? { ...user, role: e.target.value } : user))
                           }}
-                          className={`text-xs p-1.5 rounded border outline-none ${
-                            u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' : 
-                            u.role === 'write' ? 'bg-blue-50 border-blue-200 text-blue-700' : 
-                            'bg-slate-50 border-slate-200 text-slate-600'
-                          }`}
+                          className={`text-xs p-1.5 rounded border outline-none disabled:opacity-50 ${u.role === 'admin' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                              u.role === 'write' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                'bg-slate-50 border-slate-200 text-slate-600'
+                            }`}
                         >
                           <option value="read">Lesezugriff</option>
                           <option value="write">Lese- & Schreibzugriff</option>
                           <option value="admin">Administrator</option>
                         </select>
-                        
+
                         <button
                           onClick={() => {
-                            if(u.id === currentUser.id) return alert("Du kannst dich nicht selbst löschen.");
-                            if(window.confirm(`Nutzer ${u.name} wirklich löschen?`)) {
+                            setEditingUserId(u.id);
+                            setNewUserForm({ ...u });
+                          }}
+                          className={`p-1.5 rounded transition-colors ${editingUserId === u.id ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                          title="Nutzer bearbeiten"
+                        >
+                          <Pencil size={16} />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (u.id === currentUser.id) return alert("Du kannst dich nicht selbst löschen.");
+                            if (window.confirm(`Nutzer ${u.name} wirklich löschen?`)) {
                               setUsersDb(usersDb.filter(user => user.id !== u.id));
+                              if (editingUserId === u.id) {
+                                setEditingUserId(null);
+                                setNewUserForm({ username: '', password: '', name: '', department: '', role: 'read', viewAllTasks: true });
+                              }
                             }
                           }}
                           disabled={u.id === currentUser.id}
@@ -1077,7 +1279,7 @@ export default function KanbanTracker() {
                     </div>
                   ))}
                 </div>
-                
+
               </div>
             </div>
           </div>
