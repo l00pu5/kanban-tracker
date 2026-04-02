@@ -137,6 +137,7 @@ export default function KanbanTracker() {
   // View & Search State
   const [viewMode, setViewMode] = useState('board');
   const [searchQuery, setSearchQuery] = useState('');
+  const [listTagFilter, setListTagFilter] = useState('');
 
   // Tag creation state
   const [newTagText, setNewTagText] = useState('');
@@ -153,6 +154,18 @@ export default function KanbanTracker() {
     setNewTagColor(TAG_COLORS[0]);
     setIsEditingDesc(false);
   }, [activePath]);
+
+  const allUsedTags = useMemo(() => {
+    const tagsMap = new Map();
+    Object.values(tasks).forEach(task => {
+      if (task.tags) {
+        task.tags.forEach(tag => {
+          tagsMap.set(tag.text, tag);
+        });
+      }
+    });
+    return Array.from(tagsMap.values()).sort((a, b) => a.text.localeCompare(b.text));
+  }, [tasks]);
 
   const currentTaskId = activePath.length > 0 ? activePath[activePath.length - 1] : null;
   const currentTask = currentTaskId ? tasks[currentTaskId] : null;
@@ -375,7 +388,7 @@ export default function KanbanTracker() {
 
   // -- List View Helpers --
   const listVisibleTaskIds = useMemo(() => {
-    if (!searchQuery.trim()) return null;
+    if (!searchQuery.trim() && !listTagFilter) return null;
 
     const lowerQuery = searchQuery.toLowerCase();
     const matches = new Set();
@@ -385,30 +398,38 @@ export default function KanbanTracker() {
       if (!task) return false;
       if (visibleTaskIds && !visibleTaskIds.has(taskId)) return false;
 
-      let isMatch = (task.title || '').toLowerCase().includes(lowerQuery) ||
+      let taskMatchesQuery = !searchQuery.trim() ||
+        (task.title || '').toLowerCase().includes(lowerQuery) ||
         (task.description || '').toLowerCase().includes(lowerQuery);
 
+      let taskMatchesTag = !listTagFilter ||
+        (task.tags && task.tags.some(t => t.text === listTagFilter));
+
+      let isMatchForThisTask = taskMatchesQuery && taskMatchesTag;
+
       // Check children recursively
+      let isMatchFromChildren = false;
       task.subtaskIds.forEach(childId => {
         if (checkTask(childId)) {
-          isMatch = true;
+          isMatchFromChildren = true;
         }
       });
 
-      if (isMatch) matches.add(taskId);
-      return isMatch;
+      const finalMatch = isMatchForThisTask || isMatchFromChildren;
+      if (finalMatch) matches.add(taskId);
+      return finalMatch;
     };
 
     rootTasks.forEach(t => checkTask(t.id));
     return matches;
-  }, [tasks, searchQuery, visibleTaskIds, rootTasks]);
+  }, [tasks, searchQuery, listTagFilter, visibleTaskIds, rootTasks]);
 
   const renderTaskRow = (taskId, level = 0) => {
     const task = tasks[taskId];
     if (!task) return null;
 
     if (visibleTaskIds && !visibleTaskIds.has(taskId)) return null;
-    if (searchQuery.trim() && listVisibleTaskIds && !listVisibleTaskIds.has(taskId)) return null;
+    if ((searchQuery.trim() || listTagFilter) && listVisibleTaskIds && !listVisibleTaskIds.has(taskId)) return null;
 
     const statusObj = statuses.find(s => s.id === task.status) || statuses[0];
 
@@ -427,6 +448,18 @@ export default function KanbanTracker() {
               <span className="bg-slate-100 text-slate-500 text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ml-2">
                 {task.subtaskIds.filter(id => !visibleTaskIds || visibleTaskIds.has(id)).length} Unteraufg.
               </span>
+            )}
+          </div>
+
+          {/* HIER GEÄNDERT: von hidden lg:flex auf hidden sm:flex */}
+          <div className="w-32 hidden sm:flex flex-wrap gap-1 items-center">
+            {task.tags && task.tags.slice(0, 2).map(tag => (
+              <span key={tag.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${tag.colorClass} truncate max-w-full`} title={tag.text}>
+                {tag.text}
+              </span>
+            ))}
+            {task.tags && task.tags.length > 2 && (
+              <span className="text-[10px] text-slate-400">+{task.tags.length - 2}</span>
             )}
           </div>
 
@@ -726,28 +759,42 @@ export default function KanbanTracker() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 flex flex-col items-center">
           <div className="w-full max-w-5xl flex flex-col h-full">
             {/* Search Bar */}
-            <div className="mb-4 relative flex-shrink-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                placeholder="Aufgaben durchsuchen (Titel oder Beschreibung)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
-              />
+            <div className="mb-4 flex flex-col sm:flex-row gap-3 flex-shrink-0">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Aufgaben durchsuchen (Titel oder Beschreibung)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+                />
+              </div>
+              <select
+                value={listTagFilter}
+                onChange={(e) => setListTagFilter(e.target.value)}
+                className="w-full sm:w-48 p-3 rounded-xl border border-slate-200 bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm text-sm text-slate-700 cursor-pointer"
+              >
+                <option value="">Alle Tags</option>
+                {allUsedTags.map(tag => (
+                  <option key={tag.text} value={tag.text}>{tag.text}</option>
+                ))}
+              </select>
             </div>
 
             {/* List Container */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
               <div className="flex items-center gap-4 p-4 border-b border-slate-200 bg-slate-100/50 text-xs font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">
                 <div className="flex-1">Aufgabe</div>
+                {/* HIER GEÄNDERT: von hidden lg:block auf hidden sm:block */}
+                <div className="w-32 hidden sm:block">Tags</div>
                 <div className="w-32 hidden sm:block">Status</div>
                 <div className="w-40 hidden md:block">Verantwortlich</div>
                 <div className="w-24 hidden sm:block">Fällig am</div>
               </div>
               <div className="overflow-y-auto flex-1">
                 {(() => {
-                  const filteredRootTasks = rootTasks.filter(t => !searchQuery.trim() || (listVisibleTaskIds && listVisibleTaskIds.has(t.id)));
+                  const filteredRootTasks = rootTasks.filter(t => (!searchQuery.trim() && !listTagFilter) || (listVisibleTaskIds && listVisibleTaskIds.has(t.id)));
                   if (filteredRootTasks.length === 0) {
                     return (
                       <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
